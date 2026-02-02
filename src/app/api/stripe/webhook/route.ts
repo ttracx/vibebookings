@@ -30,17 +30,17 @@ export async function POST(req: NextRequest) {
     switch (event.type) {
       case 'checkout.session.completed': {
         const session = event.data.object as Stripe.Checkout.Session
-        const subscription = await stripe.subscriptions.retrieve(
+        const subscriptionData = await stripe.subscriptions.retrieve(
           session.subscription as string
-        )
+        ) as Stripe.Subscription
 
         await prisma.subscription.update({
           where: { stripeCustomerId: session.customer as string },
           data: {
-            stripeSubscriptionId: subscription.id,
-            stripePriceId: subscription.items.data[0].price.id,
+            stripeSubscriptionId: subscriptionData.id,
+            stripePriceId: subscriptionData.items.data[0].price.id,
             stripeCurrentPeriodEnd: new Date(
-              subscription.current_period_end * 1000
+              (subscriptionData as any).current_period_end * 1000
             ),
             status: 'ACTIVE',
           },
@@ -49,17 +49,19 @@ export async function POST(req: NextRequest) {
       }
 
       case 'invoice.payment_succeeded': {
-        const invoice = event.data.object as Stripe.Invoice
-        const subscription = await stripe.subscriptions.retrieve(
+        const invoice = event.data.object as any
+        if (!invoice.subscription) break
+        
+        const subscriptionData = await stripe.subscriptions.retrieve(
           invoice.subscription as string
-        )
+        ) as Stripe.Subscription
 
         await prisma.subscription.update({
-          where: { stripeSubscriptionId: subscription.id },
+          where: { stripeSubscriptionId: subscriptionData.id },
           data: {
-            stripePriceId: subscription.items.data[0].price.id,
+            stripePriceId: subscriptionData.items.data[0].price.id,
             stripeCurrentPeriodEnd: new Date(
-              subscription.current_period_end * 1000
+              (subscriptionData as any).current_period_end * 1000
             ),
             status: 'ACTIVE',
           },
